@@ -200,7 +200,8 @@
             sphereCollision({
               sphere: player,
               box: enemy,
-            })
+            }) ||
+            player.position.y < ground.position.y
           ) {
             cancelAnimationFrame(animationId)
             const points = Math.floor(totalPoints * 100) / 100
