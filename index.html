@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Przeszkody na drodze</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="menu">
+      <p class="score" style="margin-bottom: 5px">Najlepszy wynik:</p>
+      <p class="score max"></p>
+      <p class="score" style="margin-bottom: 5px">Aktualny wynik:</p>
+      <p class="score points"></p>
+      <p class="desc">(1 sekunda = 1 punkt)</p>
+      <div class="button restart-button">Rozpocznij</div>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from 'three'
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+      import { boxCollision, sphereCollision } from './source/utils/CollisionDetector.js'
+      import { findMax } from './source/utils/FindMax.js'
+      import { grassTexture, brickTexture, goldTexture } from './source/textures/Textures.js'
+      import { Box } from './source/models/Box.js'
+      import { Sphere } from './source/models/Sphere.js'
+
+      const menu = document.querySelector('.menu')
+      const restartBtn = document.querySelector('.restart-button')
+      const maxScore = document.querySelector('.max')
+      const score = document.querySelector('.points')
+
+      restartBtn.addEventListener('click', (e) => {
+        location.reload()
+      })
+
+      const scene = new THREE.Scene()
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      )
+
+      const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
+      })
+      renderer.shadowMap.enabled = true
+      renderer.setSize(window.innerWidth, window.innerHeight)
+      document.body.appendChild(renderer.domElement)
+
+      const controls = new OrbitControls(camera, renderer.domElement)
+
+      const player = new Sphere({
+        radius: 0.5,
+        texture: goldTexture,
+        velocity: {
+          x: 0,
+          y: -0.01,
+          z: 0,
+        },
+        position: {
+          x: 0,
+          y: 0,
+          z: 4,
+        },
+      })
+      player.castShadow = true
+      scene.add(player)
+
+      const ground = new Box({
+        width: 10,
+        height: 0.2,
+        depth: 26,
+        texture: grassTexture,
+        position: {
+          x: 0,
+          y: -1.8,
+          z: -8,
+        },
+      })
+      ground.receiveShadow = true
+      scene.add(ground)
+
+      const directLight = new THREE.DirectionalLight(0xffffff, 1)
+      directLight.position.y = 3
+      directLight.position.z = 1
+      directLight.position.x = 1
+      directLight.castShadow = true
+
+      scene.add(directLight)
+      scene.add(new THREE.AmbientLight(0xffffff, 0.15))
+
+      camera.position.z = 11
+      camera.position.y = 3
+
+      // Movement events, detect while key is pressed or not (WASD)
+      const keys = {
+        W: {
+          pressed: false,
+        },
+        A: {
+          pressed: false,
+        },
+        S: {
+          pressed: false,
+        },
+        D: {
+          pressed: false,
+        },
+      }
+
+      window.addEventListener('keydown', (e) => {
+        switch (e.code) {
+          case 'KeyW':
+            keys.W.pressed = true
+            break
+          case 'KeyA':
+            keys.A.pressed = true
+            break
+          case 'KeyS':
+            keys.S.pressed = true
+            break
+          case 'KeyD':
+            keys.D.pressed = true
+            break
+          default:
+            break
+        }
+      })
+
+      window.addEventListener('keyup', (e) => {
+        switch (e.code) {
+          case 'KeyW':
+            keys.W.pressed = false
+            break
+          case 'KeyA':
+            keys.A.pressed = false
+            break
+          case 'KeyS':
+            keys.S.pressed = false
+            break
+          case 'KeyD':
+            keys.D.pressed = false
+            break
+          default:
+            break
+        }
+      })
+
+      let enemies = []
+      let frames = 0
+      let spawnRate = 80
+      let animationId
+      let totalPoints = 0
+
+      export function animate() {
+        animationId = requestAnimationFrame(animate)
+        renderer.render(scene, camera)
+
+        // movement logic
+        const cSpeed = 0.075
+        player.velocity.x = 0
+        player.velocity.z = 0
+
+        if (keys.W.pressed) {
+          player.velocity.z += -cSpeed
+          player.rotation.x += -cSpeed
+        } else if (keys.S.pressed) {
+          player.velocity.z += cSpeed
+          player.rotation.x += cSpeed
+        }
+
+        if (keys.A.pressed) {
+          player.velocity.x += -cSpeed
+          player.rotation.z += cSpeed
+        } else if (keys.D.pressed) {
+          player.velocity.x += cSpeed
+          player.rotation.z += -cSpeed
+        }
+
+        player.update(ground)
+
+        // enemies
+        enemies.forEach((enemy) => {
+          enemy.update(ground)
+          if (
+            sphereCollision({
+              sphere: player,
+              box: enemy,
+            })
+          ) {
+            cancelAnimationFrame(animationId)
+            const points = Math.floor(totalPoints * 100) / 100
+
+            let currentPoints = localStorage.getItem('points')
+            if (currentPoints === null) {
+              currentPoints = ''
+            }
+            localStorage.setItem('points', currentPoints + points + ';')
+
+            const max = findMax()
+
+            menu.classList.add('menu--visible')
+            maxScore.innerText = `${max} pkt.`
+            score.innerText = `${points.toString()} pkt.`
+          }
+        })
+
+        if (frames % spawnRate == 0) {
+          if (spawnRate > 20) {
+            spawnRate -= 5
+          }
+
+          let enemy = new Box({
+            width: 1,
+            height: 1,
+            depth: 1,
+            texture: brickTexture,
+            position: {
+              x: (Math.random() - 0.5) * 10,
+              y: 0,
+              z: -10,
+            },
+            velocity: {
+              x: 0,
+              y: 0,
+              z: 0.005,
+            },
+            zAcceleration: true,
+          })
+          enemy.castShadow = true
+          scene.add(enemy)
+
+          enemies.push(enemy)
+        }
+
+        frames++
+        totalPoints = frames / 60
+      }
+
+      animate()
+    </script>
+  </body>
+</html>
